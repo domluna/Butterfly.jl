@@ -54,7 +54,7 @@ loader = DataLoader()
 x, y = next_batch(loader, 128)
 
 # warmup, see if grads make sense
-dW1 = nn_backward(W1, x, y)
+@time dW1 = nn_backward(W1, x, y)
 println(dW1[1, 1:5])
 
 testx, testy = load_test_set() 
