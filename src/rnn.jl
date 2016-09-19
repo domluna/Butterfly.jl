@@ -1,27 +1,20 @@
 using ReverseDiffPrototype
 const RDP = ReverseDiffPrototype
+using Distributions
+include("char_loader.jl")
 
-# input vector is the length of the one-hot encoding or embedding output
+loader = CharLoader("../data/input.txt")
 
 # number of unique chars in the dataset
-input_size = 97
-output_size = 97
-state_size = 40
+batch_size = 25
+input_size = length(loader.chars)
+output_size = length(loader.chars)
+state_size = 100
 param_scaler = 0.01
 
 Wh = randn(state_size, state_size) * param_scaler
 Wx = randn(input_size, state_size) * param_scaler
 Wo = randn(state_size, output_size) * param_scaler
-
-# batch_size x state_size,  batch_size x state_size
-# 1x97 * 97x40 + 1x40 * 40x40
-# 1x40 + 1x40
-function rnn_cell(Wx, Wh, Wo, xt, ht)
-    xt = reshape(xt, (1, input_size))
-    ht = tanh(xt * Wx + ht * Wh) # 1x40
-    ot = ht * Wo # 1x97
-    return ot, ht # 1x97, 1x40
-end
 
 function softmax(logits)
     exp_logits = exp(logits)
@@ -30,43 +23,34 @@ end
 
 logsoftmax(logits) = log(softmax(logits))
 
-function neural_net(Wx, Wh, Wo, inputs, xt, ht)
-    T = size(inputs, 1)
-    outputs = zeros(T, output_size)
-    ht = zeros(1, state_size)
-    for t=1:T
-        xt = inputs[t, :]
-        ot, ht = rnn_cell(Wx, Wh, Wo, xt, ht)
-        outputs[t, :] = ot
-    end
-    return outputs
+function rnn_cell(Wx, Wh, Wo, xt, ht)
+    xt = reshape(xt, (1, input_size))
+    ht = tanh(xt * Wx + ht * Wh)
+    ot = ht * Wo
+    return ot, ht
 end
-
-# TODO: figure out y
+ 
 function train_neural_net(Wx, Wh, Wo, X, Y)
     loss = 0.
-    n = size(X, 1)
-    for i=1:n
-        outputs = neural_net(Wx, Wh, Wo, X[i, :, :])
-        println(typeof(outputs))
-        y = Y[i, :]
-        inds = zip(1:length(y), y)
-        logprobs = logsoftmax(outputs)
-        loss += sum(map(i -> -logprobs[i[1], i[2]], inds))
+    T = size(X, 1)
+    ht = zeros(1, state_size)
+    for t=1:T
+        ot, ht = rnn_cell(Wx, Wh, Wo, X[t, :], ht)
+        y = Y[t]
+        loss += -(logsoftmax(ot)[y])
     end
-    return loss / n
+    return loss / T
 end
 
-# TODO: preds will be a long vector should it be a matrix?
 function predict_neural_net(Wx, Wh, Wo, X)
     preds = Int[]
-    n = size(X, 1)
-    for i=1:n
-        outputs = neural_net(Wx, Wh, Wo, X[i, :, :])
-        for i=1:size(outputs,1)
-            push!(preds, indmax(outputs[i, :]))
-        end
-    end
+    T = size(X, 1)
+    ht = zeros(1, state_size)
+    for t=1:T
+        xt = view(X, t, :)
+        ot, ht = rnn_cell(Wx, Wh, Wo, xt, ht)
+        push!(preds, indmax(ot))
+    end    
     return preds
 end
 
@@ -75,27 +59,56 @@ function nn_backward(Wx, Wh, Wo, X, Y)
     return  dWx, dWh, dWo
 end
 
+function generate_text(T)
+    id0 = rand(1:input_size, 1)[1]
+    xt = zeros(1, input_size)
+    xt[id0] = 1
+    ht = zeros(1, state_size)
+    ids = Int[id0]
+
+    for t=1:T
+        ot, ht = rnn_cell(Wx, Wh, Wo, xt, ht)
+        probs = softmax(ot)
+        ct = Categorical(probs[:])
+        pred = rand(ct) 
+        xt[:] = 0.
+        xt[pred] = 1.
+        push!(ids, pred)
+    end
+    return ids
+end
+
+function train_model(iters, Wx, Wh, Wo; α=1e-2)
+    for i=1:iters
+        x, y = next_batch(loader, batch_size)
+        dWx, dWh, dWo = nn_backward(Wx, Wh, Wo, x, y)
+        # Vanilla SGD
+        Wx += α * dWx
+        Wh += α * dWh
+        Wo += α * dWo
+
+        if i % 100 == 0
+            println("Loop iter $i")
+            println("Generated text ...")
+            ids = generate_text(200)
+            for i in ids
+                print(loader.id2char[i])
+            end
+            println("\n")
+        end
+    end
+end
+
 accuracy(ypred, ytrue) = mean(ypred .== ytrue)
 
 
-# warmup, see if grads make sense
-# @time nn_backward(Wx, Wh, Wo, X, Y)
+# x, y = next_batch(loader, batch_size)
+# # warmup, see if grads make sense
+# @time nn_backward(Wx, Wh, Wo, x, y)
 # gc()
-# @time dWx, dWh, dWo = nn_backward(Wx, Wh, Wo, X, Y)
+# @time dWx, dWh, dWo = nn_backward(Wx, Wh, Wo, x, y)
 # println(dWx[1, 1:5])
+# println(dWh[1, 1:5])
+# println(dWo[1, 1:5])
 
-# α = 1e-3
-# for i in 1:10000
-#     x, y = next_batch(loader, 32)
-#     dWx, dWh, dWo = nn_backward(Wx, Wh, Wo, X, Y)
-#     # Vanilla SGD
-#     Wx += α * dWx
-#     Wh += α * dWh
-#     Wo += α * dWo
-
-#     if i % 1000 == 0
-#         ypred = predict_neural_net(W1, testx)
-#         acc = accuracy(ypred, testy)
-#         println("Loop iter $(i), accuracy = $(acc)")
-#     end
-# end
+# train_model(100000, Wx, Wh, Wo)
