@@ -9,7 +9,7 @@ DataLoader() = DataLoader(1, shuffle(1:60000))
 
 function next_batch(loader::DataLoader, batch_size)
     x = zeros(Float32, batch_size, 784)
-    y = zeros(Int, batch_size)
+    y = zeros(Float32, batch_size)
     for i in 1:batch_size
         x[i, :] = trainfeatures(loader.order[loader.cur_id])
         label = trainlabel(loader.order[loader.cur_id])
@@ -19,7 +19,6 @@ function next_batch(loader::DataLoader, batch_size)
             loader.cur_id = 1
         end
     end
-    x = (x .- mean(x, 2)) ./ std(x, 2)
     x, y
 end
 
@@ -31,6 +30,5 @@ function load_test_set(N=10000)
         label = testlabel(i)
         y[i] = Int(label)+1
     end
-    x = (x .- mean(x, 2)) ./ std(x, 2)
     x, y
 end
