@@ -43,8 +43,6 @@ const EPOCHS = 20
 # parameters
 W = randn(Float64, 10, 784) * 0.01
 b = zeros(Float64, 10)
-Wg = similar(W)
-bg = similar(b)
 
 inputs = (zeros(Float64, 784, BATCH_SIZE), zeros(Float64, 10, BATCH_SIZE), W, b)
 outputs = map(similar, inputs)
@@ -60,10 +58,11 @@ accuracy(y, ŷ) = mean(mapslices(indmax, y, 1) .== mapslices(indmax, ŷ, 1))
 @time model! = ReverseDiff.compile_gradient(model, inputs)
 
 for i=1:EPOCHS
-  for j=1:STEPS_PER_EPOCH
+  @time for j=1:STEPS_PER_EPOCH
     s = Int((j-1) * BATCH_SIZE + 1)
     e = Int(j * BATCH_SIZE)
-    X_batch, y_batch = data.train.X[:, s:e], data.train.y[:, s:e]
+    X_batch = @view data.train.X[:, s:e]
+    y_batch = @view data.train.y[:, s:e]
     inputs = (X_batch, y_batch, W, b)
     model!(outputs, inputs)
     W -= α * outputs[3]
