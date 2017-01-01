@@ -1,45 +1,33 @@
-using ReverseDiffPrototype
-const RDP = ReverseDiffPrototype
+using ReverseDiff
 using Distributions
 include("char_loader.jl")
 
 loader = CharLoader("../data/input.txt")
 
 # number of unique chars in the dataset
-batch_size = 25
-input_size = length(loader.chars)
-output_size = length(loader.chars)
-state_size = 100
-param_scaler = 0.01
+BATCH_SIZE = 25
+INPUT_SIZE = length(loader.chars)
+OUTPUT_SIZE = length(loader.chars)
+STATE_SIZE = 100
 
-Wh = randn(state_size, state_size) * param_scaler
-Wx = randn(input_size, state_size) * param_scaler
-Wo = randn(state_size, output_size) * param_scaler
+Wh = randn(T, state_size, state_size) * 0.01
+Wx = randn(T, state_size, input_size) * 0.01
+Wo = randn(T, output_size, state_size) * 0.01
 
-function softmax(logits)
-    exp_logits = exp(logits)
-    return exp_logits ./ sum(exp_logits, 2)
-end
+ReverseDiff.@forward minus_log(x) = -log(x)
+softmax(x) = (exp_x = exp.(x); exp_x ./ sum(exp_x, 1))
+cross_entropy_loss(x, y) = mean(sum(y .* minus_log.(x), 1))
 
-logsoftmax(logits) = log(softmax(logits))
-
-function rnn_cell(Wx, Wh, Wo, xt, ht)
-    xt = reshape(xt, (1, input_size))
-    ht = tanh(xt * Wx + ht * Wh)
-    ot = ht * Wo
-    return ot, ht
-end
- 
-function train_neural_net(Wx, Wh, Wo, X, Y)
-    loss = 0.
-    T = size(X, 1)
+function train_rnn(cell::AbstractCell{T}, X, Y)
+    loss = T(0)
+    n = size(X, 2)
     ht = zeros(1, state_size)
-    for t=1:T
+    for t=1:n
         ot, ht = rnn_cell(Wx, Wh, Wo, X[t, :], ht)
         y = Y[t]
-        loss += -(logsoftmax(ot)[y])
+        loss += minus_log.(softmax(ot))[y]
     end
-    return loss / T
+    return loss / n
 end
 
 function predict_neural_net(Wx, Wh, Wo, X)
@@ -50,13 +38,8 @@ function predict_neural_net(Wx, Wh, Wo, X)
         xt = view(X, t, :)
         ot, ht = rnn_cell(Wx, Wh, Wo, xt, ht)
         push!(preds, indmax(ot))
-    end    
+    end
     return preds
-end
-
-function nn_backward(Wx, Wh, Wo, X, Y)
-    dWx, dWh, dWo, dX = RDP.gradient((Wx, Wh, Wo, X) -> train_neural_net(Wx, Wh, Wo, X, Y), (Wx, Wh, Wo, X))
-    return  dWx, dWh, dWo
 end
 
 function generate_text(T)
@@ -70,7 +53,7 @@ function generate_text(T)
         ot, ht = rnn_cell(Wx, Wh, Wo, xt, ht)
         probs = softmax(ot)
         ct = Categorical(probs[:])
-        pred = rand(ct) 
+        pred = rand(ct)
         xt[:] = 0.
         xt[pred] = 1.
         push!(ids, pred)
@@ -100,15 +83,3 @@ function train_model(iters, Wx, Wh, Wo; α=1e-2)
 end
 
 accuracy(ypred, ytrue) = mean(ypred .== ytrue)
-
-
-# x, y = next_batch(loader, batch_size)
-# # warmup, see if grads make sense
-# @time nn_backward(Wx, Wh, Wo, x, y)
-# gc()
-# @time dWx, dWh, dWo = nn_backward(Wx, Wh, Wo, x, y)
-# println(dWx[1, 1:5])
-# println(dWh[1, 1:5])
-# println(dWo[1, 1:5])
-
-# train_model(100000, Wx, Wh, Wo)

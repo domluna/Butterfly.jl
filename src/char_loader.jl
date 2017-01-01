@@ -16,7 +16,7 @@ function CharLoader(filepath)
 end
 
 function next_batch(loader::CharLoader, batch_size)
-    x = zeros(Float64, batch_size, length(loader.chars))
+    x = zeros(Float32, batch_size, length(loader.chars))
     y = zeros(Int, batch_size)
     local seq::AbstractString
     if loader.cur_id + batch_size > length(loader.data)

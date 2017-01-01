@@ -1,20 +1,20 @@
-abstract AbstractCell
+abstract AbstractCell{T}
 
-type RNNCell{T} <: AbstractCell
-    
+type RNNCell{T<:AbstractFloat} <: AbstractCell{T}
+  Wh::AbstractMatrix{T}
+  Wx::AbstractMatrix{T}
+  Wo::AbstractMatrix{T}
+  ht
 end
 
-function compute(::RNNCell, x, h)
+function compute(c::RNNCell, xt)
+    xt = reshape(xt, (1, input_size))
+    ht = tanh.(xt * c.Wx .+ c.ht * c.Wh)
+    return c.ht * c.Wo
 end
 
-type LSTMCell{T} <: AbstractCell
+type LSTMCell{T<:AbstractFloat} <: AbstractCell
 end
 
-function compute(::LSTMCell, x, h)
-end
-
-type GRUCell{T} <: AbstractCell
-end
-
-function compute(::GRUCell, x, h)
+function compute(c::LSTMCell, x, h)
 end
